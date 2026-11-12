@@ -1,12 +1,13 @@
 """Shared configuration and paths for training and serving."""
 
 from pathlib import Path
+import os
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "data"
 RAW_DATA_DIR = DATA_DIR / "raw"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
-ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
+ARTIFACTS_DIR = Path(os.environ.get("MODEL_ARTIFACTS_DIR", PROJECT_ROOT / "artifacts"))
 OUTPUT_DIR = PROJECT_ROOT / "output"
 
 NUM_FEATURES = [

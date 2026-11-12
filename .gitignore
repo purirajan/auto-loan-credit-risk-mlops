@@ -1,6 +1,7 @@
 .venv/
 __pycache__/
 output/
+deployment/aws/build/
 artifacts/
 data/raw/*
 !data/raw/.gitkeep

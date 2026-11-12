@@ -58,7 +58,11 @@ auto-pd/
 │       └── validation.py       # Input schema and validation rules
 ├── tests/                      # Pytest validation and reproducibility suite
 ├── scripts/
-│   └── client.py               # Simulated dealer calling the scoring API
+│   ├── client.py               # Simulated dealer calling the scoring API
+│   └── aws/
+│       ├── package_model.sh    # Package local artifacts for SageMaker
+│       ├── push_image_to_ecr.sh
+│       └── deploy_endpoint.sh
 ├── .github/workflows/ci.yml    # Run tests and build the API image on GitHub
 ├── artifacts/                  # Generated model, metadata, and schema
 ├── output/                     # Generated scores and validation reports
@@ -207,10 +211,29 @@ Generate the model artifacts first, then build and start the API container:
 ```bash
 ./run_pipeline.sh
 docker build -t auto-pd-api .
-docker run --rm -p 8000:8000 auto-pd-api
+docker run --rm -p 8000:8080 auto-pd-api
 ```
 
 Open **http://127.0.0.1:8000/docs** to try the API. The image includes the generated model and schema, runs as a non-root user, and has a `/health` container health check. Rebuild the image after retraining to package updated artifacts.
+
+### AWS SageMaker endpoint (initial deployment step)
+
+The API container implements SageMaker's `/ping` health route and `/invocations` inference route. These scripts prepare the model package, push an x86-64 image to ECR, and create or update a real-time SageMaker endpoint:
+
+```bash
+./run_pipeline.sh
+export AWS_REGION=us-east-1
+export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+export SAGEMAKER_EXECUTION_ROLE_ARN=arn:aws:iam::<account-id>:role/<sagemaker-execution-role>
+./scripts/aws/package_model.sh
+aws s3 cp deployment/aws/build/model.tar.gz s3://<your-model-bucket>/auto-pd/model.tar.gz
+export MODEL_DATA_URL=s3://<your-model-bucket>/auto-pd/model.tar.gz
+export IMAGE_TAG="$(git rev-parse --short HEAD)"
+./scripts/aws/push_image_to_ecr.sh
+./scripts/aws/deploy_endpoint.sh
+```
+
+The AWS CLI must be configured with permissions for ECR, S3, and SageMaker, and the execution role must allow SageMaker to read the model object and pull the ECR image. Set `SAGEMAKER_INSTANCE_TYPE` and `SAGEMAKER_INSTANCE_COUNT` to override the deployment defaults. Endpoint hosting is billable for as long as the endpoint is running; delete it when finished. No AWS resources are created by local tests or CI.
 
 ---
 
@@ -256,7 +279,7 @@ Combined with pinned dependencies in `requirements.txt` and fixed random seeds, 
 - [x] Reproducible pipeline with pinned dependencies and a data fingerprint
 - [x] Experiment tracking and model registry with MLflow
 - [x] Containerization with Docker
-- [ ] Deployment on AWS (S3, ECR, SageMaker endpoints and batch transform)
+- [ ] Deployment on AWS (S3, ECR, and SageMaker real-time endpoint foundation added; batch transform remains)
 - [ ] Deployment on Databricks (Unity Catalog, Model Serving, scheduled PySpark scoring)
 - [x] Automated tests with pytest
 - [x] Continuous integration with GitHub Actions (tests and container build)

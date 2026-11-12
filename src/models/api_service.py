@@ -61,9 +61,14 @@ def health():
     }
 
 
-@app.post("/score")
-def score(application: Application):
-    """Validate and score one auto-loan application."""
+@app.get("/ping")
+def ping():
+    """SageMaker container health check endpoint."""
+    return {"status": "ok"}
+
+
+def score_application(application: Application) -> dict:
+    """Validate and score one request, shared by local and SageMaker routes."""
     row = pd.DataFrame([application.model_dump()])
     errors, warnings = validate(row, schema)
     if errors:
@@ -77,3 +82,17 @@ def score(application: Application):
         "scored_at": datetime.now().isoformat(timespec="seconds"),
         "warnings": warnings,
     }
+
+
+@app.post("/score")
+def score(application: Application):
+    """Validate and score one auto-loan application."""
+    return score_application(application)
+
+
+@app.post("/invocations")
+def invocations(payload: Application | list[Application]):
+    """SageMaker inference endpoint accepting one application or a JSON array."""
+    if isinstance(payload, list):
+        return [score_application(application) for application in payload]
+    return score_application(payload)
