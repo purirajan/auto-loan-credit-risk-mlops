@@ -52,7 +52,8 @@ auto-pd/
 │   │   ├── api_service.py      # FastAPI health and scoring endpoints
 │   │   ├── mlflow_training.py  # Track experiments and register models
 │   │   ├── mlflow_scoring.py   # Score using the champion model alias
-│   │   └── model_registry.py   # Promote and list model versions
+│   │   ├── model_registry.py   # Promote and list model versions
+│   │   └── prepare_batch_data.py # Validate CSV and export JSON Lines
 │   └── evaluation/
 │       ├── metrics.py          # AUC and Gini metrics
 │       └── validation.py       # Input schema and validation rules
@@ -62,7 +63,8 @@ auto-pd/
 │   └── aws/
 │       ├── package_model.sh    # Package local artifacts for SageMaker
 │       ├── push_image_to_ecr.sh
-│       └── deploy_endpoint.sh
+│       ├── deploy_endpoint.sh
+│       └── run_batch_transform.sh
 ├── .github/workflows/ci.yml    # Run tests and build the API image on GitHub
 ├── artifacts/                  # Generated model, metadata, and schema
 ├── output/                     # Generated scores and validation reports
@@ -235,6 +237,24 @@ export IMAGE_TAG="$(git rev-parse --short HEAD)"
 
 The AWS CLI must be configured with permissions for ECR, S3, and SageMaker, and the execution role must allow SageMaker to read the model object and pull the ECR image. Set `SAGEMAKER_INSTANCE_TYPE` and `SAGEMAKER_INSTANCE_COUNT` to override the deployment defaults. Endpoint hosting is billable for as long as the endpoint is running; delete it when finished. No AWS resources are created by local tests or CI.
 
+#### SageMaker Batch Transform
+
+For offline scoring, prepare a CSV containing `loan_id` and all model features, then convert it to validated JSON Lines. Upload the input and model package to S3, push the image to ECR as above, and submit a transform job:
+
+```bash
+python -m src.models.prepare_batch_data \
+  --input-csv data/processed/applications.csv \
+  --output-jsonl output/aws_batch/applications.jsonl
+aws s3 cp deployment/aws/build/model.tar.gz s3://<your-model-bucket>/auto-pd/model.tar.gz
+aws s3 cp output/aws_batch/applications.jsonl s3://<your-batch-bucket>/auto-pd/input/applications.jsonl
+export MODEL_DATA_URL=s3://<your-model-bucket>/auto-pd/model.tar.gz
+export BATCH_INPUT_S3_URI=s3://<your-batch-bucket>/auto-pd/input/
+export BATCH_OUTPUT_S3_URI=s3://<your-batch-bucket>/auto-pd/results/<unique-run-prefix>/
+./scripts/aws/run_batch_transform.sh
+```
+
+The job reads newline-delimited application objects and writes one JSON result per line under the output prefix. Use a new output prefix for each job. Override the default batch instance and concurrency with `BATCH_INSTANCE_TYPE`, `BATCH_INSTANCE_COUNT`, `BATCH_MAX_CONCURRENT_TRANSFORMS`, and `BATCH_MAX_PAYLOAD_MB`. Batch Transform runs only for the job duration rather than leaving a real-time endpoint up, but the instances and S3 storage are still billable. The job creates a SageMaker model resource; remove it after the job if it is no longer needed.
+
 ---
 
 ## Validation design
@@ -279,7 +299,7 @@ Combined with pinned dependencies in `requirements.txt` and fixed random seeds, 
 - [x] Reproducible pipeline with pinned dependencies and a data fingerprint
 - [x] Experiment tracking and model registry with MLflow
 - [x] Containerization with Docker
-- [ ] Deployment on AWS (S3, ECR, and SageMaker real-time endpoint foundation added; batch transform remains)
+- [ ] Deploy on AWS (S3/ECR/SageMaker scripts support real-time endpoints and Batch Transform; deploy to an AWS account remains)
 - [ ] Deployment on Databricks (Unity Catalog, Model Serving, scheduled PySpark scoring)
 - [x] Automated tests with pytest
 - [x] Continuous integration with GitHub Actions (tests and container build)
