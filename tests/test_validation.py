@@ -5,8 +5,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from train import CAT_FEATURES, NUM_FEATURES, train_model
-from validate import validate
+from configs.settings import CAT_FEATURES, NUM_FEATURES
+from src.evaluation.validation import validate
+from src.models.training import train_model
 
 
 @pytest.fixture(scope="module")

@@ -1,13 +1,11 @@
+"""Backward-compatible entry point for promoting an MLflow model version."""
+
 import sys
 
-import mlflow
-from mlflow import MlflowClient
+from src.models.model_registry import promote
 
-mlflow.set_tracking_uri("sqlite:///mlflow.db")
-client = MlflowClient()
 
-version = sys.argv[1]
-client.set_registered_model_alias("auto_pd", "champion", version)
-
-mv = client.get_model_version_by_alias("auto_pd", "champion")
-print(f"auto_pd v{mv.version} is now champion (from run {mv.run_id})")
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        raise SystemExit("Usage: python promote.py <model-version>")
+    promote(sys.argv[1])

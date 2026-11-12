@@ -12,7 +12,7 @@ The model itself is intentionally simple (logistic regression). The point of thi
 
 | MLOps stage | How it is implemented here |
 |---|---|
-| Data access | A single data layer (`data_source.py`) that is the only code aware of where data comes from |
+| Data access | `src/data/ingestion.py` loads and splits data |
 | Training | A scikit-learn pipeline that bundles preprocessing and the model into one artifact |
 | Packaging | A serialized model plus metadata recording version, data fingerprint, and environment |
 | Data contract | An input schema generated from training data and saved alongside the model |
@@ -23,12 +23,12 @@ The model itself is intentionally simple (logistic regression). The point of thi
 
 ```mermaid
 flowchart LR
-    A[OpenML data] --> B[data_source.py]
-    B --> C[train.py]
+    A[OpenML data] --> B[src/data/ingestion.py]
+    B --> C[src/models/training.py]
     C --> D[(artifacts/<br/>model + metadata + schema)]
-    D --> E[score.py<br/>batch scoring]
-    D --> F[app.py<br/>real-time API]
-    G[validate.py] --> E
+    D --> E[src/models/batch_scoring.py]
+    D --> F[main.py<br/>real-time API]
+    G[src/evaluation/validation.py] --> E
     G --> F
 ```
 
@@ -36,21 +36,48 @@ flowchart LR
 
 ## Project structure
 
-```
+```text
 auto-pd/
-├── data_source.py      # Data access layer: loads loans, splits history vs. new applications
-├── train.py            # Training pipeline: fits model, writes artifacts
-├── validate.py         # Data contract: builds the schema and validates incoming batches
-├── score.py            # Batch inference job with a validation gate and audit report
-├── app.py              # Real-time scoring API (FastAPI)
-├── Dockerfile          # Container image for the scoring API
-├── client.py           # Simulated dealer system that calls the API
-├── test_validation.py  # Deliberately corrupted batches to test the validator
-├── run_pipeline.sh     # One command: train, test, score
-├── requirements.txt    # Pinned package versions
-├── artifacts/          # Generated: model, metadata, schema (not tracked in Git)
-└── output/             # Generated: scored files, validation reports (not tracked in Git)
+├── configs/
+│   └── settings.py             # Shared paths, features, and model settings
+├── data/
+│   ├── raw/                    # Optional raw local inputs; not committed
+│   └── processed/              # Optional derived data; not committed
+├── src/
+│   ├── data/ingestion.py       # OpenML loading and data split
+│   ├── features/pipeline.py    # Preprocessing and estimator pipeline
+│   ├── models/
+│   │   ├── training.py         # Fit model and write artifacts
+│   │   ├── batch_scoring.py    # Validate and score a batch
+│   │   ├── api_service.py      # FastAPI health and scoring endpoints
+│   │   ├── mlflow_training.py  # Track experiments and register models
+│   │   ├── mlflow_scoring.py   # Score using the champion model alias
+│   │   └── model_registry.py   # Promote and list model versions
+│   └── evaluation/
+│       ├── metrics.py          # AUC and Gini metrics
+│       └── validation.py       # Input schema and validation rules
+├── tests/                      # Pytest validation and reproducibility suite
+├── artifacts/                  # Generated model, metadata, and schema
+├── output/                     # Generated scores and validation reports
+├── main.py                     # FastAPI application entry point
+├── run_pipeline.sh             # Train, test, and batch-score workflow
+└── Dockerfile                  # Container image for the scoring API
 ```
+
+| Component | Responsibility |
+|---|---|
+| `data/` | Optional storage for raw and processed data; the current pipeline fetches its data from OpenML and does not commit dataset copies |
+| `configs/` | Centralize shared paths, feature names, seeds, and model settings |
+| `src/data/` | Load source data and create history/application splits |
+| `src/features/` | Build numeric scaling and categorical encoding transformations |
+| `src/models/` | Train models, score batches and API requests, and manage MLflow versions |
+| `src/evaluation/` | Compute model metrics and enforce the input data contract |
+| `tests/` | Verify validation behavior and deterministic training |
+| `artifacts/` | Store generated model, metadata, and input schema |
+| `main.py` | Expose the FastAPI application for local serving and Docker |
+
+Root-level scripts such as `train.py`, `score.py`, and `validate.py` remain as
+small compatibility entry points; the implementations live under `src/`.
 
 ---
 
@@ -79,7 +106,7 @@ pip install -r requirements.txt
 ./run_pipeline.sh
 ```
 
-`run_pipeline.sh` trains the model, runs the validation tests, and scores the new applications. It stops immediately if any step fails.
+`run_pipeline.sh` trains the model, runs the pytest suite, and scores the new applications. It stops immediately if any step fails.
 
 Outputs:
 
@@ -96,7 +123,7 @@ Outputs:
 Start the server:
 
 ```bash
-python -m uvicorn app:app --reload
+python -m uvicorn main:app --reload
 ```
 
 Then open **http://127.0.0.1:8000/docs** for an interactive page where you can send test applications from the browser.
@@ -176,7 +203,7 @@ Every batch and every API request passes through the same `validate()` function,
 
 **Warnings allow scoring but flag it.** A value that is plausible but outside the range seen in training means the model is extrapolating. The score is produced, and the warning is recorded in the validation report for review.
 
-Run `python test_validation.py` to see the validator handle six scenarios, from a clean batch to text in a numeric column.
+Run `pytest -q` to exercise the validator and check that training twice with the same seed produces identical predicted PDs. Validation and metrics are implemented in `src/evaluation/`.
 
 ---
 
@@ -212,7 +239,8 @@ Combined with pinned dependencies in `requirements.txt` and fixed random seeds, 
 - [x] Containerization with Docker
 - [ ] Deployment on AWS (S3, ECR, SageMaker endpoints and batch transform)
 - [ ] Deployment on Databricks (Unity Catalog, Model Serving, scheduled PySpark scoring)
-- [ ] Automated tests and CI/CD with GitHub Actions
+- [x] Automated tests with pytest
+- [ ] CI/CD with GitHub Actions
 - [ ] Monitoring for data drift (PSI) and calibration, with a retraining trigger
 - [ ] Larger, real US auto loan data from SEC EDGAR asset-backed securities filings
 

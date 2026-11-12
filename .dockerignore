@@ -4,6 +4,8 @@ __pycache__/
 *.py[cod]
 .DS_Store
 output/
+data/raw/
+data/processed/
 mlruns/
 mlartifacts/
 mlflow.db
