@@ -43,6 +43,7 @@ auto-pd/
 ├── validate.py         # Data contract: builds the schema and validates incoming batches
 ├── score.py            # Batch inference job with a validation gate and audit report
 ├── app.py              # Real-time scoring API (FastAPI)
+├── Dockerfile          # Container image for the scoring API
 ├── client.py           # Simulated dealer system that calls the API
 ├── test_validation.py  # Deliberately corrupted batches to test the validator
 ├── run_pipeline.sh     # One command: train, test, score
@@ -153,6 +154,18 @@ An invalid application returns HTTP `422` with every problem listed:
 
 With the server running, `python client.py` simulates a dealer origination system: it checks health, scores a valid and an invalid application, and measures average response time (about 4 ms locally).
 
+### Run the API with Docker
+
+Generate the model artifacts first, then build and start the API container:
+
+```bash
+./run_pipeline.sh
+docker build -t auto-pd-api .
+docker run --rm -p 8000:8000 auto-pd-api
+```
+
+Open **http://127.0.0.1:8000/docs** to try the API. The image includes the generated model and schema, runs as a non-root user, and has a `/health` container health check. Rebuild the image after retraining to package updated artifacts.
+
 ---
 
 ## Validation design
@@ -185,7 +198,7 @@ Combined with pinned dependencies in `requirements.txt` and fixed random seeds, 
 - **Small sample.** About 337 loans is far too few for a real PD model, and test-set AUC is noisy.
 - **Not US auto data.** German Credit is a classic benchmark, not a modern US auto portfolio.
 - **Baseline model.** Logistic regression with default settings, with no binning, variable selection, caps and floors, or calibration work.
-- **Local only, so far.** No containerization, cloud deployment, authentication, or monitoring yet.
+- **Local only, so far.** The scoring API can run in Docker, but there is no cloud deployment, authentication, or monitoring yet.
 
 ---
 
@@ -195,8 +208,8 @@ Combined with pinned dependencies in `requirements.txt` and fixed random seeds, 
 - [x] Data contract and two-tier input validation
 - [x] Real-time scoring API with a health endpoint
 - [x] Reproducible pipeline with pinned dependencies and a data fingerprint
-- [ ] Experiment tracking and model registry with MLflow
-- [ ] Containerization with Docker
+- [x] Experiment tracking and model registry with MLflow
+- [x] Containerization with Docker
 - [ ] Deployment on AWS (S3, ECR, SageMaker endpoints and batch transform)
 - [ ] Deployment on Databricks (Unity Catalog, Model Serving, scheduled PySpark scoring)
 - [ ] Automated tests and CI/CD with GitHub Actions

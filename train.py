@@ -24,46 +24,56 @@ CAT_FEATURES = ["purpose", "checking_status", "credit_history",
 FEATURES = NUM_FEATURES + CAT_FEATURES
 TARGET = "default_flag"
 
-history, _ = get_history_and_new_apps()
-X, y = history[FEATURES], history[TARGET]
+def train_model(X, y, random_state=42):
+    """Split the data reproducibly, fit the pipeline, and return model and split."""
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.3, stratify=y, random_state=random_state
+    )
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.3, stratify=y, random_state=42
-)
+    model = Pipeline([
+        ("prep", ColumnTransformer([
+            ("num", StandardScaler(), NUM_FEATURES),
+            ("cat", OneHotEncoder(handle_unknown="ignore"), CAT_FEATURES),
+        ])),
+        ("clf", LogisticRegression(max_iter=1000)),
+    ])
+    model.fit(X_train, y_train)
+    return model, X_train, X_test, y_test
 
-model = Pipeline([
-    ("prep", ColumnTransformer([
-        ("num", StandardScaler(), NUM_FEATURES),
-        ("cat", OneHotEncoder(handle_unknown="ignore"), CAT_FEATURES),
-    ])),
-    ("clf", LogisticRegression(max_iter=1000)),
-])
-model.fit(X_train, y_train)
 
-auc = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
-print(f"Test AUC = {auc:.3f}, Gini = {2 * auc - 1:.3f}")
+def main():
+    history, _ = get_history_and_new_apps()
+    X, y = history[FEATURES], history[TARGET]
+    model, X_train, X_test, y_test = train_model(X, y)
 
-joblib.dump(model, "artifacts/pd_model.joblib")
-schema = build_schema(X_train, NUM_FEATURES, CAT_FEATURES)
-with open("artifacts/input_schema.json", "w") as f:
-    json.dump(schema, f, indent=2)
-data_hash = hashlib.sha256(
-    pd.util.hash_pandas_object(history, index=True).values
-).hexdigest()[:16]
-metadata = {
-    "model_name": "auto_pd",
-    "model_version": "1.0",
-    "trained_on": str(date.today()),
-    "data_source": "OpenML credit-g, purpose in [new car, used car]",
-    "data_hash": data_hash,
-    "python_version": platform.python_version(),
-    "sklearn_version": sklearn.__version__,
-    "pandas_version": pd.__version__,
-    "training_rows": len(X_train),
-    "features": FEATURES,
-    "test_auc": round(auc, 4),
-}
-with open("artifacts/model_metadata.json", "w") as f:
-    json.dump(metadata, f, indent=2)
+    auc = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
+    print(f"Test AUC = {auc:.3f}, Gini = {2 * auc - 1:.3f}")
 
-print("Saved model and metadata to artifacts/")
+    joblib.dump(model, "artifacts/pd_model.joblib")
+    schema = build_schema(X_train, NUM_FEATURES, CAT_FEATURES)
+    with open("artifacts/input_schema.json", "w") as f:
+        json.dump(schema, f, indent=2)
+    data_hash = hashlib.sha256(
+        pd.util.hash_pandas_object(history, index=True).values
+    ).hexdigest()[:16]
+    metadata = {
+        "model_name": "auto_pd",
+        "model_version": "1.0",
+        "trained_on": str(date.today()),
+        "data_source": "OpenML credit-g, purpose in [new car, used car]",
+        "data_hash": data_hash,
+        "python_version": platform.python_version(),
+        "sklearn_version": sklearn.__version__,
+        "pandas_version": pd.__version__,
+        "training_rows": len(X_train),
+        "features": FEATURES,
+        "test_auc": round(auc, 4),
+    }
+    with open("artifacts/model_metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    print("Saved model and metadata to artifacts/")
+
+
+if __name__ == "__main__":
+    main()
