@@ -1,0 +1,108 @@
+bundle:
+  name: auto-pd
+
+variables:
+  catalog:
+    description: Unity Catalog catalog for registered models and data volumes
+    default: main
+  schema:
+    description: Unity Catalog schema for the project
+    default: mlops
+  model_name:
+    description: Registered model name (without catalog and schema)
+    default: auto_pd
+  batch_input_path:
+    description: CSV input path in a Unity Catalog Volume
+    default: /Volumes/main/mlops/auto_pd/input/applications.csv
+  batch_output_path:
+    description: Delta output path in a Unity Catalog Volume
+    default: /Volumes/main/mlops/auto_pd/scored
+  node_type_id:
+    description: Databricks AWS worker node type
+    default: m5d.large
+  spark_version:
+    description: Databricks Runtime version
+    default: 16.4.x-scala2.12
+
+resources:
+  jobs:
+    train_unity_catalog_model:
+      name: auto-pd-train-uc
+      tasks:
+        - task_key: train_and_register
+          spark_python_task:
+            python_file: scripts/databricks/train_uc.py
+            parameters: ["1.0"]
+          libraries:
+            - pypi:
+                package: mlflow==3.16.1
+            - pypi:
+                package: scikit-learn==1.9.1
+            - pypi:
+                package: pandas==3.0.6
+          job_cluster_key: auto_pd_train_cluster
+      job_clusters:
+        - job_cluster_key: auto_pd_train_cluster
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type_id}
+            num_workers: 1
+            data_security_mode: SINGLE_USER
+            single_user_name: ${workspace.current_user.userName}
+            spark_env_vars:
+              MLFLOW_TRACKING_URI: databricks
+              MLFLOW_REGISTRY_URI: databricks-uc
+              DATABRICKS_CATALOG: ${var.catalog}
+              DATABRICKS_SCHEMA: ${var.schema}
+              DATABRICKS_MODEL_NAME: ${var.model_name}
+              MODEL_NAME: ${var.catalog}.${var.schema}.${var.model_name}
+            aws_attributes:
+              availability: SPOT_WITH_FALLBACK
+
+    scheduled_pyspark_scoring:
+      name: auto-pd-scheduled-pyspark-scoring
+      schedule:
+        quartz_cron_expression: "0 0 7 * * ?"
+        timezone_id: UTC
+        pause_status: PAUSED
+      parameters:
+        - name: input_path
+          default: ${var.batch_input_path}
+        - name: output_path
+          default: ${var.batch_output_path}
+      tasks:
+        - task_key: score_csv_with_champion
+          spark_python_task:
+            python_file: scripts/databricks/score_batch.py
+            parameters:
+              - --input-path
+              - "{{job.parameters.input_path}}"
+              - --output-path
+              - "{{job.parameters.output_path}}"
+          libraries:
+            - pypi:
+                package: mlflow==3.16.1
+            - pypi:
+                package: scikit-learn==1.9.1
+            - pypi:
+                package: pandas==3.0.6
+          job_cluster_key: auto_pd_scoring_cluster
+      job_clusters:
+        - job_cluster_key: auto_pd_scoring_cluster
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type_id}
+            num_workers: 2
+            data_security_mode: SINGLE_USER
+            single_user_name: ${workspace.current_user.userName}
+            spark_env_vars:
+              MLFLOW_TRACKING_URI: databricks
+              MLFLOW_REGISTRY_URI: databricks-uc
+              MODEL_NAME: ${var.catalog}.${var.schema}.${var.model_name}
+            aws_attributes:
+              availability: SPOT_WITH_FALLBACK
+
+targets:
+  dev:
+    default: true
+    mode: development

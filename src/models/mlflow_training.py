@@ -14,6 +14,7 @@ from sklearn.model_selection import train_test_split
 from configs.settings import (
     FEATURES,
     MLFLOW_EXPERIMENT,
+    MLFLOW_REGISTRY_URI,
     MLFLOW_TRACKING_URI,
     MODEL_NAME,
     RANDOM_STATE,
@@ -32,6 +33,8 @@ def main() -> None:
     """Run one parameterized experiment and register its fitted model."""
     regularization = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    if MLFLOW_REGISTRY_URI:
+        mlflow.set_registry_uri(MLFLOW_REGISTRY_URI)
     mlflow.set_experiment(MLFLOW_EXPERIMENT)
 
     history, _ = get_history_and_new_apps()

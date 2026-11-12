@@ -6,13 +6,20 @@ import mlflow
 from mlflow import MlflowClient
 from mlflow.exceptions import MlflowException
 
-from configs.settings import MLFLOW_TRACKING_URI, MODEL_NAME
+from configs.settings import MLFLOW_REGISTRY_URI, MLFLOW_TRACKING_URI, MODEL_NAME
+
+
+def get_client() -> MlflowClient:
+    """Create a registry client honoring local MLflow or Unity Catalog config."""
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    if MLFLOW_REGISTRY_URI:
+        mlflow.set_registry_uri(MLFLOW_REGISTRY_URI)
+    return MlflowClient()
 
 
 def promote(version: str) -> None:
     """Assign the champion alias to the specified registered model version."""
-    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-    client = MlflowClient()
+    client = get_client()
     client.set_registered_model_alias(MODEL_NAME, "champion", version)
     model_version = client.get_model_version_by_alias(MODEL_NAME, "champion")
     print(f"{MODEL_NAME} v{model_version.version} is now champion (from run {model_version.run_id})")
@@ -20,8 +27,7 @@ def promote(version: str) -> None:
 
 def show_models() -> None:
     """Print registered versions and mark the current champion."""
-    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-    client = MlflowClient()
+    client = get_client()
     try:
         champion = client.get_model_version_by_alias(MODEL_NAME, "champion").version
     except MlflowException:

@@ -29,7 +29,10 @@ FEATURES = NUM_FEATURES + CAT_FEATURES
 TARGET = "default_flag"
 RANDOM_STATE = 42
 TEST_SIZE = 0.3
-MODEL_NAME = "auto_pd"
+MODEL_NAME = os.environ.get("MODEL_NAME", "auto_pd")
 MODEL_VERSION = "1.0"
-MLFLOW_TRACKING_URI = f"sqlite:///{PROJECT_ROOT / 'mlflow.db'}"
+MLFLOW_TRACKING_URI = os.environ.get(
+    "MLFLOW_TRACKING_URI", f"sqlite:///{PROJECT_ROOT / 'mlflow.db'}"
+)
+MLFLOW_REGISTRY_URI = os.environ.get("MLFLOW_REGISTRY_URI")
 MLFLOW_EXPERIMENT = "auto-pd"

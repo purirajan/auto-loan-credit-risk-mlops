@@ -60,12 +60,17 @@ auto-pd/
 ├── tests/                      # Pytest validation and reproducibility suite
 ├── scripts/
 │   ├── client.py               # Simulated dealer calling the scoring API
+│   ├── databricks/
+│   │   ├── train_uc.py          # Train and register a Unity Catalog model
+│   │   ├── promote_uc_model.py  # Set the champion model alias
+│   │   └── score_batch.py       # Distributed Spark scoring to Delta
 │   └── aws/
 │       ├── package_model.sh    # Package local artifacts for SageMaker
 │       ├── push_image_to_ecr.sh
 │       ├── deploy_endpoint.sh
 │       └── run_batch_transform.sh
 ├── .github/workflows/ci.yml    # Run tests and build the API image on GitHub
+├── databricks.yml              # Databricks Asset Bundle jobs
 ├── artifacts/                  # Generated model, metadata, and schema
 ├── output/                     # Generated scores and validation reports
 ├── main.py                     # FastAPI application entry point
@@ -255,6 +260,35 @@ export BATCH_OUTPUT_S3_URI=s3://<your-batch-bucket>/auto-pd/results/<unique-run-
 
 The job reads newline-delimited application objects and writes one JSON result per line under the output prefix. Use a new output prefix for each job. Override the default batch instance and concurrency with `BATCH_INSTANCE_TYPE`, `BATCH_INSTANCE_COUNT`, `BATCH_MAX_CONCURRENT_TRANSFORMS`, and `BATCH_MAX_PAYLOAD_MB`. Batch Transform runs only for the job duration rather than leaving a real-time endpoint up, but the instances and S3 storage are still billable. The job creates a SageMaker model resource; remove it after the job if it is no longer needed.
 
+### Databricks foundation (Unity Catalog and scheduled Spark scoring)
+
+The Databricks Asset Bundle defines a UC model training job and a paused scheduled PySpark scoring job. Before deploying, install and authenticate the Databricks CLI, select a Unity Catalog catalog/schema, and create a volume for batch inputs and outputs:
+
+```sql
+CREATE SCHEMA IF NOT EXISTS main.mlops;
+CREATE VOLUME IF NOT EXISTS main.mlops.auto_pd;
+```
+
+Then validate/deploy the bundle, run training, and promote the registered UC model version after reviewing its metrics:
+
+```bash
+databricks bundle validate -t dev
+databricks bundle deploy -t dev
+databricks bundle run train_unity_catalog_model -t dev
+```
+
+Upload an applications CSV (including `loan_id` and all model features) to `/Volumes/main/mlops/auto_pd/input/applications.csv`. Update the job's `input_path` and `output_path` parameters if using another volume. The scheduled job is intentionally paused by default; run it manually after promoting a model, or enable its schedule only after workspace-specific review:
+
+```bash
+export MLFLOW_TRACKING_URI=databricks
+export MLFLOW_REGISTRY_URI=databricks-uc
+export MODEL_NAME=main.mlops.auto_pd
+python scripts/databricks/promote_uc_model.py <registered-version>
+databricks bundle run scheduled_pyspark_scoring -t dev
+```
+
+The Spark scorer validates its input with distributed checks, predicts through a Pandas UDF, and writes versioned lineage fields to a unique Delta output folder in the UC Volume. Training fetches the public dataset from OpenML, so the job cluster needs outbound access. Cluster compute and storage are billable. This is a deployment foundation, not a live Databricks deployment: credentials, Unity Catalog permissions, cloud resources, and a Databricks Model Serving endpoint still need workspace-specific setup.
+
 ---
 
 ## Validation design
@@ -300,7 +334,7 @@ Combined with pinned dependencies in `requirements.txt` and fixed random seeds, 
 - [x] Experiment tracking and model registry with MLflow
 - [x] Containerization with Docker
 - [ ] Deploy on AWS (S3/ECR/SageMaker scripts support real-time endpoints and Batch Transform; deploy to an AWS account remains)
-- [ ] Deployment on Databricks (Unity Catalog, Model Serving, scheduled PySpark scoring)
+- [ ] Deploy on Databricks (UC and scheduled Spark job foundations added; provision workspace resources and Model Serving endpoint)
 - [x] Automated tests with pytest
 - [x] Continuous integration with GitHub Actions (tests and container build)
 - [ ] Continuous deployment to a cloud environment
