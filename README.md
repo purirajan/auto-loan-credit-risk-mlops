@@ -59,6 +59,7 @@ auto-pd/
 ├── tests/                      # Pytest validation and reproducibility suite
 ├── scripts/
 │   └── client.py               # Simulated dealer calling the scoring API
+├── .github/workflows/ci.yml    # Run tests and build the API image on GitHub
 ├── artifacts/                  # Generated model, metadata, and schema
 ├── output/                     # Generated scores and validation reports
 ├── main.py                     # FastAPI application entry point
@@ -110,6 +111,8 @@ pip install -r requirements.txt
 ```
 
 `run_pipeline.sh` trains the model, runs the pytest suite, and scores the new applications. It stops immediately if any step fails.
+
+GitHub Actions runs the same pipeline and builds the Docker image on pushes to `main`, pull requests, or manual dispatch. The workflow downloads the public dataset from OpenML during training.
 
 Outputs:
 
@@ -256,7 +259,8 @@ Combined with pinned dependencies in `requirements.txt` and fixed random seeds, 
 - [ ] Deployment on AWS (S3, ECR, SageMaker endpoints and batch transform)
 - [ ] Deployment on Databricks (Unity Catalog, Model Serving, scheduled PySpark scoring)
 - [x] Automated tests with pytest
-- [ ] CI/CD with GitHub Actions
+- [x] Continuous integration with GitHub Actions (tests and container build)
+- [ ] Continuous deployment to a cloud environment
 - [ ] Monitoring for data drift (PSI) and calibration, with a retraining trigger
 - [ ] Larger, real US auto loan data from SEC EDGAR asset-backed securities filings
 
