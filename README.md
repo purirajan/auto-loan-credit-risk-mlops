@@ -57,6 +57,8 @@ auto-pd/
 │       ├── metrics.py          # AUC and Gini metrics
 │       └── validation.py       # Input schema and validation rules
 ├── tests/                      # Pytest validation and reproducibility suite
+├── scripts/
+│   └── client.py               # Simulated dealer calling the scoring API
 ├── artifacts/                  # Generated model, metadata, and schema
 ├── output/                     # Generated scores and validation reports
 ├── main.py                     # FastAPI application entry point
@@ -76,8 +78,9 @@ auto-pd/
 | `artifacts/` | Store generated model, metadata, and input schema |
 | `main.py` | Expose the FastAPI application for local serving and Docker |
 
-Root-level scripts such as `train.py`, `score.py`, and `validate.py` remain as
-small compatibility entry points; the implementations live under `src/`.
+Only the API and pipeline orchestration remain as root entry points. Training,
+scoring, evaluation, and MLflow operations live in their corresponding `src/`
+packages.
 
 ---
 
@@ -179,7 +182,20 @@ An invalid application returns HTTP `422` with every problem listed:
 }
 ```
 
-With the server running, `python client.py` simulates a dealer origination system: it checks health, scores a valid and an invalid application, and measures average response time (about 4 ms locally).
+With the server running, `python scripts/client.py` simulates a dealer origination system: it checks health, scores a valid and an invalid application, and measures average response time (about 4 ms locally).
+
+### MLflow experiments and registry
+
+Run a tracked training experiment (optionally pass a different logistic-regression regularization value):
+
+```bash
+python -m src.models.mlflow_training 0.1
+python -m src.models.model_registry
+python -m src.models.model_registry 1
+python -m src.models.mlflow_scoring
+```
+
+The registry command without a version lists model versions; with a version, it assigns that version the `champion` alias. MLflow state is stored in the local `mlflow.db` database.
 
 ### Run the API with Docker
 

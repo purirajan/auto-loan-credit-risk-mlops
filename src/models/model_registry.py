@@ -4,6 +4,7 @@ import sys
 
 import mlflow
 from mlflow import MlflowClient
+from mlflow.exceptions import MlflowException
 
 from configs.settings import MLFLOW_TRACKING_URI, MODEL_NAME
 
@@ -21,7 +22,10 @@ def show_models() -> None:
     """Print registered versions and mark the current champion."""
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     client = MlflowClient()
-    champion = client.get_model_version_by_alias(MODEL_NAME, "champion").version
+    try:
+        champion = client.get_model_version_by_alias(MODEL_NAME, "champion").version
+    except MlflowException:
+        champion = None
     versions = client.search_model_versions(f"name='{MODEL_NAME}'")
     for model_version in sorted(versions, key=lambda version: int(version.version)):
         run = client.get_run(model_version.run_id)
