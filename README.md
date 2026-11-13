@@ -53,9 +53,11 @@ auto-pd/
 │   │   ├── mlflow_training.py  # Track experiments and register models
 │   │   ├── mlflow_scoring.py   # Score using the champion model alias
 │   │   ├── model_registry.py   # Promote and list model versions
-│   │   └── prepare_batch_data.py # Validate CSV and export JSON Lines
+│   │   ├── prepare_batch_data.py # Validate CSV and export JSON Lines
+│   │   └── monitor_batch.py    # PSI drift and matured-outcome monitoring
 │   └── evaluation/
 │       ├── metrics.py          # AUC and Gini metrics
+│       ├── monitoring.py       # PSI profiles and calibration calculations
 │       └── validation.py       # Input schema and validation rules
 ├── tests/                      # Pytest validation and reproducibility suite
 ├── scripts/
@@ -121,7 +123,7 @@ pip install -r requirements.txt
 ./run_pipeline.sh
 ```
 
-`run_pipeline.sh` trains the model, runs the pytest suite, and scores the new applications. It stops immediately if any step fails.
+`run_pipeline.sh` trains the model, runs the pytest suite, scores the new applications, and generates a PSI monitoring report. It stops immediately if any step fails.
 
 GitHub Actions runs the same pipeline and builds the Docker image on pushes to `main`, pull requests, or manual dispatch. The workflow downloads the public dataset from OpenML during training.
 
@@ -130,6 +132,7 @@ Outputs:
 - `artifacts/pd_model.joblib`: the trained model
 - `artifacts/model_metadata.json`: version, training date, features, AUC, data hash, environment
 - `artifacts/input_schema.json`: the model's data contract
+- `artifacts/monitoring_profile.json`: training feature distributions for PSI
 - `output/scored_applications.csv`: PDs with model version and timestamp
 - `output/validation_report.json`: pass or fail status, errors, and warnings for the batch
 
@@ -301,6 +304,16 @@ Every batch and every API request passes through the same `validate()` function,
 
 Run `pytest -q` to exercise the validator and check that training twice with the same seed produces identical predicted PDs. Validation and metrics are implemented in `src/evaluation/`.
 
+### Drift and calibration monitoring
+
+Training also writes `artifacts/monitoring_profile.json`, with numeric quantile bins and categorical shares from the training split. Batch scores now retain the input features so they can be compared with that baseline. Run:
+
+```bash
+python -m src.models.monitor_batch
+```
+
+The report at `output/monitoring_report.json` includes per-feature population stability index (PSI), warning/critical shift alerts, and a retraining recommendation for review. PSI of 0.1 is treated as a warning and 0.25 as critical. Calibration metrics (observed default rate, mean predicted PD, Brier score, and AUC when both classes are present) are calculated only after a `default_flag` column is joined to the scored CSV by `loan_id` once outcomes mature; at least 30 labeled rows are required. The tool only recommends review—it does not trigger retraining. This is a local monitoring foundation, not scheduled production monitoring.
+
 ---
 
 ## Reproducibility
@@ -321,7 +334,7 @@ Combined with pinned dependencies in `requirements.txt` and fixed random seeds, 
 - **Small sample.** About 337 loans is far too few for a real PD model, and test-set AUC is noisy.
 - **Not US auto data.** German Credit is a classic benchmark, not a modern US auto portfolio.
 - **Baseline model.** Logistic regression with default settings, with no binning, variable selection, caps and floors, or calibration work.
-- **Local only, so far.** The scoring API can run in Docker, but there is no cloud deployment, authentication, or monitoring yet.
+- **Local only, so far.** Deployment scripts and local drift/calibration reporting exist, but there is no live cloud deployment, authentication, or scheduled production monitoring.
 
 ---
 
@@ -338,7 +351,7 @@ Combined with pinned dependencies in `requirements.txt` and fixed random seeds, 
 - [x] Automated tests with pytest
 - [x] Continuous integration with GitHub Actions (tests and container build)
 - [ ] Continuous deployment to a cloud environment
-- [ ] Monitoring for data drift (PSI) and calibration, with a retraining trigger
+- [ ] Production monitoring for data drift (local PSI/calibration report foundation added) and a governed retraining trigger
 - [ ] Larger, real US auto loan data from SEC EDGAR asset-backed securities filings
 
 ---

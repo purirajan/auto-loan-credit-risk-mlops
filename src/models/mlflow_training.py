@@ -25,6 +25,7 @@ from configs.settings import (
 )
 from src.data.ingestion import get_history_and_new_apps
 from src.evaluation.metrics import evaluate_binary_classifier
+from src.evaluation.monitoring import build_monitoring_profile
 from src.evaluation.validation import build_schema
 from src.features.pipeline import build_model_pipeline
 
@@ -69,6 +70,10 @@ def main() -> None:
             "sklearn_version": sklearn.__version__,
         })
         mlflow.log_dict(build_schema(X_train, NUM_FEATURES, CAT_FEATURES), "input_schema.json")
+        mlflow.log_dict(
+            build_monitoring_profile(X_train, NUM_FEATURES, CAT_FEATURES),
+            "monitoring_profile.json",
+        )
         mlflow.sklearn.log_model(
             model,
             "model",

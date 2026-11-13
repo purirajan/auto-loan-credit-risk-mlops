@@ -37,6 +37,7 @@ def main() -> None:
     pd_scores = model.predict_proba(new_apps[features])[:, 1]
     out = pd.DataFrame({
         "loan_id": new_apps["loan_id"].values,
+        **{feature: new_apps[feature].values for feature in features},
         "pd": pd_scores.round(4),
         "model_name": MODEL_NAME,
         "model_version": model_version.version,

@@ -23,6 +23,7 @@ from configs.settings import (
 )
 from src.data.ingestion import get_history_and_new_apps
 from src.evaluation.metrics import evaluate_binary_classifier
+from src.evaluation.monitoring import build_monitoring_profile
 from src.evaluation.validation import build_schema
 from src.features.pipeline import build_model_pipeline
 
@@ -54,6 +55,10 @@ def main() -> None:
     joblib.dump(model, ARTIFACTS_DIR / "pd_model.joblib")
     schema = build_schema(X_train, NUM_FEATURES, CAT_FEATURES)
     (ARTIFACTS_DIR / "input_schema.json").write_text(json.dumps(schema, indent=2))
+    profile = build_monitoring_profile(X_train, NUM_FEATURES, CAT_FEATURES)
+    (ARTIFACTS_DIR / "monitoring_profile.json").write_text(
+        json.dumps(profile, indent=2)
+    )
 
     data_hash = hashlib.sha256(
         pd.util.hash_pandas_object(history, index=True).values

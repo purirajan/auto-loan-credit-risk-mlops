@@ -42,7 +42,7 @@ def main() -> None:
     pd_scores = model.predict_proba(new_apps[meta["features"]])[:, 1]
     out = pd.DataFrame({
         "loan_id": new_apps["loan_id"].values,
-        "purpose": new_apps["purpose"].values,
+        **{feature: new_apps[feature].values for feature in meta["features"]},
         "pd": pd_scores.round(4),
         "model_version": meta["model_version"],
         "scored_at": datetime.now().isoformat(timespec="seconds"),
