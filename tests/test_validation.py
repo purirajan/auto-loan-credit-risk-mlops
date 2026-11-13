@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from configs.settings import CAT_FEATURES, NUM_FEATURES
-from src.evaluation.validation import validate
+from src.evaluation.validation import HARD_LIMITS, validate
 from src.models.training import train_model
 
 
@@ -45,15 +45,38 @@ def test_missing_column_fails(validation_data):
     assert any("duration" in error and "Missing required columns" in error for error in errors)
 
 
-# An impossible age is rejected by the hard business limits.
-def test_out_of_range_value_fails(validation_data):
+@pytest.mark.parametrize(
+    "feature, value, should_fail",
+    [
+        (feature, value, should_fail)
+        for feature, (lower, upper) in HARD_LIMITS.items()
+        for value, should_fail in (
+            (lower - 1, True),
+            (lower, False),
+            (upper, False),
+            (upper + 1, True),
+        )
+    ],
+    ids=[
+        f"{feature}-{label}"
+        for feature, (lower, upper) in HARD_LIMITS.items()
+        for label in ("below-lower", "at-lower", "at-upper", "above-upper")
+    ],
+)
+def test_hard_limits_are_exact(validation_data, feature, value, should_fail):
+    """Each hard-limit edge is inclusive and values immediately outside fail."""
     schema, clean_batch = validation_data
     batch = clean_batch.copy()
-    batch.loc[batch.index[0], "age"] = -5
+    batch.loc[batch.index[0], feature] = value
 
     errors, _ = validate(batch, schema)
+    range_errors = [
+        error
+        for error in errors
+        if error.startswith(f"{feature}:") and "outside allowed range" in error
+    ]
 
-    assert any("age" in error and "outside allowed range" in error for error in errors)
+    assert bool(range_errors) == should_fail
 
 
 # A category absent from the model schema is rejected.
