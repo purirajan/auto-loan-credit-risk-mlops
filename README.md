@@ -1,6 +1,6 @@
-# auto-pd: Auto Loan PD Model, from Notebook to Production
+# Auto Loan Credit Risk MLOps
 
-A small, end-to-end machine learning engineering project that takes a credit risk **probability of default (PD)** model for auto loans and builds the production plumbing around it: a data access layer, a versioned model artifact, a data contract with validation, batch scoring, a real-time scoring API, and a reproducible one-command pipeline.
+An end-to-end MLOps portfolio project for auto-loan **probability-of-default (PD)** scoring. It demonstrates training, validation, batch and real-time serving, experiment tracking, and monitoring in a reproducible workflow.
 
 The model itself is intentionally simple (logistic regression). The point of this project is everything *around* the model, the part that keeps a model working reliably, consistently, and auditably after development is done.
 
@@ -37,7 +37,7 @@ flowchart LR
 ## Project structure
 
 ```text
-auto-pd/
+auto-loan-credit-risk-mlops/
 ├── configs/
 │   └── settings.py             # Shared paths, features, and model settings
 ├── data/
@@ -114,8 +114,8 @@ Attributes that encode sex, marital status, or national origin (`personal_status
 Requires **Python 3.12**.
 
 ```bash
-git clone https://github.com/purirajan/auto-pd.git
-cd auto-pd
+git clone https://github.com/purirajan/auto-loan-credit-risk-mlops.git
+cd auto-loan-credit-risk-mlops
 
 python3.12 -m venv .venv
 source .venv/bin/activate
