@@ -74,6 +74,7 @@ auto-loan-credit-risk-mlops/
 ├── .github/workflows/ci.yml    # Run tests and build the API image on GitHub
 ├── .github/workflows/deploy-aws.yml # Gated manual SageMaker deployment
 ├── databricks.yml              # Databricks Asset Bundle jobs
+├── requirements-serve.txt      # Minimal pinned API image dependencies
 ├── artifacts/                  # Generated model, metadata, and schema
 ├── output/                     # Generated scores and validation reports
 ├── main.py                     # FastAPI application entry point
@@ -222,10 +223,18 @@ Generate the model artifacts first, then build and start the API container:
 ```bash
 ./run_pipeline.sh
 docker build -t auto-pd-api .
-docker run --rm -p 8000:8080 auto-pd-api
+docker run --rm --name auto-pd-api-local -p 8000:8080 auto-pd-api
 ```
 
-Open **http://127.0.0.1:8000/docs** to try the API. The image includes the generated model and schema, runs as a non-root user, and has a `/health` container health check. Rebuild the image after retraining to package updated artifacts.
+Open **http://127.0.0.1:8000/docs** to try the API. The image installs only the pinned serving dependencies in `requirements-serve.txt` (FastAPI, Uvicorn, scikit-learn, pandas, joblib, Pydantic, and NumPy), not the MLflow and test tooling in `requirements.txt`.
+
+| Local image | Docker size |
+|---|---:|
+| Previous full-dependency `auto-pd-api:latest` | 1,294,583,635 bytes (about 1.29 GB) |
+| Serving-only image | 702,800,735 bytes (about 703 MB) |
+| Reduction | 591,782,900 bytes (about 45.7%) |
+
+The serving-only image was smoke-tested through `/ping`, `/health`, `/score`, and `/invocations` using the README example application; both scoring routes returned the same PD, `0.2665`. MLflow and pytest are not installed in it. The image includes the generated model and schema, runs as a non-root user, and has a `/health` container health check. Rebuild the image after retraining to package updated artifacts. CI continues to build the Dockerfile; it still installs the complete development environment separately for training and tests.
 
 ### AWS SageMaker endpoint (initial deployment step)
 
