@@ -1,0 +1,94 @@
+name: Deploy AWS SageMaker endpoint
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_endpoint:
+        description: Confirm creation/update of the billable SageMaker endpoint
+        required: true
+        type: choice
+        options:
+          - "no"
+          - "yes"
+        default: "no"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: aws-sagemaker-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ inputs.deploy_endpoint == 'yes' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: production
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+      SAGEMAKER_EXECUTION_ROLE_ARN: ${{ vars.SAGEMAKER_EXECUTION_ROLE_ARN }}
+      MODEL_ARTIFACTS_BUCKET: ${{ vars.MODEL_ARTIFACTS_BUCKET }}
+      SAGEMAKER_ENDPOINT_NAME: ${{ vars.SAGEMAKER_ENDPOINT_NAME }}
+      SAGEMAKER_INSTANCE_TYPE: ${{ vars.SAGEMAKER_INSTANCE_TYPE }}
+      SAGEMAKER_INSTANCE_COUNT: ${{ vars.SAGEMAKER_INSTANCE_COUNT }}
+      ECR_REPOSITORY_NAME: auto-pd-api
+      IMAGE_TAG: ${{ github.sha }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install project dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Train, test, score, and monitor
+        run: ./run_pipeline.sh
+
+      - name: Package model artifact
+        run: ./scripts/aws/package_model.sh
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: auto-pd-github-deploy
+
+      - name: Resolve AWS account and check deployment configuration
+        id: aws
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${AWS_REGION:?Set the AWS_REGION repository variable}"
+          : "${AWS_DEPLOY_ROLE_ARN:?Set the AWS_DEPLOY_ROLE_ARN repository variable}"
+          : "${SAGEMAKER_EXECUTION_ROLE_ARN:?Set the SAGEMAKER_EXECUTION_ROLE_ARN repository variable}"
+          : "${MODEL_ARTIFACTS_BUCKET:?Set the MODEL_ARTIFACTS_BUCKET repository variable}"
+          : "${SAGEMAKER_ENDPOINT_NAME:?Set the SAGEMAKER_ENDPOINT_NAME repository variable}"
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          echo "account_id=${account_id}" >> "$GITHUB_OUTPUT"
+          echo "AWS_ACCOUNT_ID=${account_id}" >> "$GITHUB_ENV"
+
+      - name: Upload versioned model package to S3
+        shell: bash
+        run: |
+          set -euo pipefail
+          model_uri="s3://${MODEL_ARTIFACTS_BUCKET}/auto-pd/models/${GITHUB_SHA}/model.tar.gz"
+          aws s3 cp deployment/aws/build/model.tar.gz "$model_uri" --region "$AWS_REGION"
+          echo "MODEL_DATA_URL=${model_uri}" >> "$GITHUB_ENV"
+
+      - name: Build and push immutable image to ECR
+        run: ./scripts/aws/push_image_to_ecr.sh
+
+      - name: Create or update SageMaker endpoint
+        run: ./scripts/aws/deploy_endpoint.sh

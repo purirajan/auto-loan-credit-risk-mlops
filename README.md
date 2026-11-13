@@ -72,6 +72,7 @@ auto-pd/
 │       ├── deploy_endpoint.sh
 │       └── run_batch_transform.sh
 ├── .github/workflows/ci.yml    # Run tests and build the API image on GitHub
+├── .github/workflows/deploy-aws.yml # Gated manual SageMaker deployment
 ├── databricks.yml              # Databricks Asset Bundle jobs
 ├── artifacts/                  # Generated model, metadata, and schema
 ├── output/                     # Generated scores and validation reports
@@ -245,6 +246,8 @@ export IMAGE_TAG="$(git rev-parse --short HEAD)"
 
 The AWS CLI must be configured with permissions for ECR, S3, and SageMaker, and the execution role must allow SageMaker to read the model object and pull the ECR image. Set `SAGEMAKER_INSTANCE_TYPE` and `SAGEMAKER_INSTANCE_COUNT` to override the deployment defaults. Endpoint hosting is billable for as long as the endpoint is running; delete it when finished. No AWS resources are created by local tests or CI.
 
+For a gated GitHub Actions release, configure repository variables `AWS_REGION`, `AWS_DEPLOY_ROLE_ARN`, `SAGEMAKER_EXECUTION_ROLE_ARN`, `MODEL_ARTIFACTS_BUCKET`, and `SAGEMAKER_ENDPOINT_NAME`. Optionally set `SAGEMAKER_INSTANCE_TYPE` and `SAGEMAKER_INSTANCE_COUNT`. Configure the AWS deployment role to trust this repository's GitHub OIDC identity, with only the required ECR/S3/SageMaker permissions and `iam:PassRole` limited to the SageMaker execution role. Protect the GitHub `production` environment with required reviewers. Then manually run **Deploy AWS SageMaker endpoint** and explicitly select `yes`; it trains and tests, uploads a commit-specific model package and immutable image tag, and creates or updates the endpoint. Selecting `no` creates no AWS resources. Endpoint compute starts billing after deployment succeeds and remains billable until the endpoint is deleted.
+
 #### SageMaker Batch Transform
 
 For offline scoring, prepare a CSV containing `loan_id` and all model features, then convert it to validated JSON Lines. Upload the input and model package to S3, push the image to ECR as above, and submit a transform job:
@@ -346,11 +349,11 @@ Combined with pinned dependencies in `requirements.txt` and fixed random seeds, 
 - [x] Reproducible pipeline with pinned dependencies and a data fingerprint
 - [x] Experiment tracking and model registry with MLflow
 - [x] Containerization with Docker
-- [ ] Deploy on AWS (S3/ECR/SageMaker scripts support real-time endpoints and Batch Transform; deploy to an AWS account remains)
+- [ ] Deploy on AWS (manual, approval-gated GitHub deployment is configured; first account deployment and cost review remain)
 - [ ] Deploy on Databricks (UC and scheduled Spark job foundations added; provision workspace resources and Model Serving endpoint)
 - [x] Automated tests with pytest
 - [x] Continuous integration with GitHub Actions (tests and container build)
-- [ ] Continuous deployment to a cloud environment
+- [x] Continuous deployment foundation (approval-gated manual AWS release workflow)
 - [ ] Production monitoring for data drift (local PSI/calibration report foundation added) and a governed retraining trigger
 - [ ] Larger, real US auto loan data from SEC EDGAR asset-backed securities filings
 
